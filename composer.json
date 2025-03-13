@@ -1,0 +1,17 @@
+{
+    "name": "urikchen/blockchain",
+    "authors": [
+        {
+            "name": "urikchen",
+            "email": "urikchen@adbert.com.tw"
+        }
+    ],
+    "require": {
+        "cboden/ratchet": "^0.4.4"
+    },
+    "autoload": {
+      "psr-4": {
+          "Blockchain\\": "src/"
+      }
+    }
+}
