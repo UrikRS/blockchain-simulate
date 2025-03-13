@@ -38,4 +38,5 @@ while (true) {
             echo "[✓] Block mined! Hash: {$block->getHash()}\n";
         }
     }
+    sleep(1);
 }
