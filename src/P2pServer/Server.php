@@ -3,7 +3,7 @@ namespace Blockchain\P2pServer;
 
 use Blockchain\DataStructures\Block;
 use Blockchain\DataStructures\Blockchain;
-use DateTimeImmutable;
+use Blockchain\HashDifficulties\ZeroPrefix;
 use Exception;
 use Ratchet\ConnectionInterface;
 use Ratchet\MessageComponentInterface;
@@ -12,6 +12,7 @@ use SplObjectStorage;
 class Server implements MessageComponentInterface
 {
     private $clients;
+    private $peers;
     private $blockchain;
 
     public function __construct(Blockchain $blockchain)
@@ -24,29 +25,93 @@ class Server implements MessageComponentInterface
     {
         $this->clients->attach($connection);
         echo "New connection\n";
-        $connection->send(json_encode(["type" => "BLOCKCHAIN", "data" => $this->blockchain->blocks]));
+        $connection->send(json_encode(['type' => 'BLOCKCHAIN', 'data' => $this->blockchain->blocks]));
     }
 
     public function onMessage(ConnectionInterface $from, $message): void
     {
         $data = json_decode($message, true);
 
-        if ($data['type'] === 'NEW_BLOCK') {
-            $block = $data['data'];
-            if ($this->blockchain->isValid() && end($this->blockchain->blocks)->getHash() === $block['previousHash']) {
-                $this->blockchain->add(new Block(
-                    $block['index'],
-                    new DateTimeImmutable($block['createdAt']),
-                    $block['transactions'],
-                    $block['difficulty'],
-                    $block['nonce'],
-                    $block['previousHash']
-                ));
-
-                foreach ($this->clients as $client) {
-                    $client->send(json_encode(["type" => "NEW_BLOCK", "data" => $block]));
+        switch ($data['type']) {
+            case 'NEW_BLOCK':
+                $block = $data['data'];
+                if (Blockchain::isValid($this->blockchain) && $this->blockchain->getLast()->getHash() === $block['previousHash']) {
+                    $this->blockchain->add(Block::from($block));
+                    $this->broadcast('NEW_BLOCK', $block);
                 }
-            }
+                break;
+            case 'NEW_TRANSACTION':
+                $transaction = $data['data'];
+                if ($this->blockchain->isValidTransaction($transaction)) {
+                    $this->blockchain->addTransaction($transaction);
+                    $this->broadcast('NEW_TRANSACTION', $transaction);
+                }
+                break;
+            case 'REQUEST_CHAIN':
+                $from->send(json_encode([
+                    'type' => 'FULL_CHAIN',
+                    'data' => $this->blockchain->blocks
+                ]));
+                break;
+            case 'FULL_CHAIN':
+                $receivedChain = $data['data'];
+                // Validate and replace if the received chain is longer
+                if (Blockchain::isValid($receivedChain) && count($receivedChain) > count($this->blockchain->blocks)) {
+                    $this->blockchain->replaceWith($receivedChain);
+                }
+                break;
+            case 'REQUEST_BLOCKS':
+                $sinceHash = $data['data'];
+                $missingBlocks = $this->blockchain->getBlocksAfter($sinceHash);
+                $from->send(json_encode(['type' => 'SYNC_BLOCKS', 'data' => $missingBlocks]));
+                break;
+            case 'SYNC_BLOCKS':
+                $missingBlocks = $data['data'];
+                foreach ($missingBlocks as $block) {
+                    $this->blockchain->add(Block::from($block));
+                }
+                break;
+            case 'REQUEST_LATEST_BLOCK':
+                $from->send(json_encode([
+                    'type' => 'LATEST_BLOCK',
+                    'data' => $this->blockchain->getLast()
+                ]));
+                break;
+            case 'LATEST_BLOCK':
+                $latestBlock = $data['data'];
+                if (Blockchain::isValid($this->blockchain) && $this->blockchain->getLast()->getHash() === $latestBlock['previousHash']) {
+                    $this->blockchain->add(Block::from($latestBlock));
+                } else {
+                    $from->send(json_encode(['type' => 'REQUEST_CHAIN']));
+                }
+                break;
+            case 'NEW_PEER':
+                $peer = $data['data'];
+                if (!in_array($peer, $this->peers)) {
+                    $this->peers[] = $peer;
+                    $this->broadcast('NEW_PEER', $peer);
+                }
+                break;
+            case 'REQUEST_PEERS':
+                $from->send(json_encode([
+                    'type' => 'PEER_LIST',
+                    'data' => $this->peers
+                ]));
+                break;
+            case 'PEER_LIST':
+                $peers = $data['data'];
+                foreach ($peers as $peer) {
+                    if (!in_array($peer, $this->peers)) {
+                        $this->peers[] = $peer;
+                    }
+                }
+                break;
+            case 'MINE_BLOCK':
+                $block = Miner::mine($this->blockchain, new ZeroPrefix);
+                if (!empty($block)) {
+                    $this->broadcast('NEW_BLOCK', $block);
+                }
+                break;
         }
     }
 
@@ -60,5 +125,12 @@ class Server implements MessageComponentInterface
     {
         echo "Error: {$e->getMessage()}\n";
         $connection->close();
+    }
+
+    private function broadcast(string $type, $data): void
+    {
+        foreach ($this->clients as $client) {
+            $client->send(json_encode(['type' => $type, 'data' => $data]));
+        }
     }
 }

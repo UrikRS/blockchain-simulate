@@ -27,6 +27,18 @@ class Block
         return new self(0, $createdAt, [], 1, 0);
     }
 
+    public static function from(array $data): Block
+    {
+        return new self(
+            $data['index'],
+            new DateTimeImmutable($data['createdAt']),
+            $data['transactions'],
+            $data['difficulty'],
+            $data['nonce'],
+            $data['previousHash']
+        );
+    }
+
     public static function hash(Block $block): string
     {
         return BlockHeader::hash($block->header);

@@ -7,7 +7,6 @@ use Blockchain\HashDifficulties\ZeroPrefix;
 use Blockchain\P2pServer\Miner;
 
 $blockchain = new Blockchain();
-$hashDifficulty = new ZeroPrefix();
 
 function randomTransaction()
 {
@@ -27,11 +26,10 @@ foreach (range(1, 10) as $i) {
     $transactions[] = $transaction;
 }
 
-$miner = new Miner($blockchain, $hashDifficulty);
-
 echo "\n[*] Mining a new block...\n";
-$block = $miner->mine();
+$block = Miner::mine($blockchain, new ZeroPrefix);
 if (!empty($block)) {
+    $blockchain->add($block);
     echo "[✓] Block mined! Hash: {$block->getHash()}\n";
 }
 
@@ -39,14 +37,14 @@ $existed = $transactions[array_rand($transactions)];
 $notExisted = '啊吧啊吧啊吧啊吧';
 
 echo "\n[*] Checking if transaction '$existed' exists...\n";
-if ($miner->blockchain->verify($existed, $block->getMerkleRoot())) {
+if ($blockchain->verify($existed, $block->getMerkleRoot())) {
     echo "[✓] Transaction '$existed' exists!\n";
 } else {
     echo "[!] Transaction '$existed' does not exist!\n";
 }
 
 echo "\n[*] Checking if transaction '$notExisted' exists...\n";
-if ($miner->blockchain->verify($notExisted, $block->getMerkleRoot())) {
+if ($blockchain->verify($notExisted, $block->getMerkleRoot())) {
     echo "[✓] Transaction '$notExisted' exists!\n";
 } else {
     echo "[!] Transaction '$notExisted' does not exist!\n";

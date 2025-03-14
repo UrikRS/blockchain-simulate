@@ -10,8 +10,6 @@ use Blockchain\P2pServer\Miner;
 // AUTOMATED MINING LOOP
 // =========================
 $blockchain = new Blockchain();
-$hashDifficulty = new ZeroPrefix();
-$miner = new Miner($blockchain, $hashDifficulty);
 
 function randomTransaction()
 {
@@ -24,17 +22,17 @@ function randomTransaction()
 }
 
 while (true) {
-    // Simulate random transactions
     if (rand(1, 5) > 3) { // 40% chance to create a transaction
         $transaction = randomTransaction();
-        $miner->blockchain->addTransaction($transaction);
+        $blockchain->addTransaction($transaction);
         echo "[+] New Transaction: $transaction\n";
     }
 
-    if (count($miner->blockchain->getPendingTransactions()) === 10) {
+    if (count($blockchain->getPendingTransactions()) === 10) {
         echo "[*] Mining a new block...\n";
-        $block = $miner->mine();
+        $block = Miner::mine($blockchain, new ZeroPrefix);
         if (!empty($block)) {
+            $blockchain->add($block);
             echo "[✓] Block mined! Hash: {$block->getHash()}\n";
         }
     }

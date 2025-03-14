@@ -23,6 +23,16 @@ class Blockchain
         $this->pendingTransactions = [];
     }
 
+    public function getBlocksAfter(string $hash): array
+    {
+        foreach ($this->blocks as $i => $block) {
+            if ($block->getHash() === $hash) {
+                return array_slice($this->blocks, $i + 1);
+            }
+        }
+        return [];
+    }
+
     public function addTransaction(string $transaction): void
     {
         $this->pendingTransactions[] = $transaction;
@@ -33,23 +43,31 @@ class Blockchain
         return $this->pendingTransactions;
     }
 
-    public function isValid(): bool
+    public static function isValid(self $blockchain): bool
     {
-        if (!$this->blocks[0]->isEqual(Block::genesis())) {
+        if (!$blockchain->blocks[0]->isEqual(Block::genesis())) {
             return false;
         }
-        $count = count($this->blocks);
+        $count = count($blockchain->blocks);
         for ($i = 1; $i < $count; $i++) {
-            if (!$this->blocks[$i]->isNextOf($this->blocks[$i - 1])) {
+            if (!$blockchain->blocks[$i]->isNextOf($blockchain->blocks[$i - 1])) {
                 return false;
             }
         }
         return true;
     }
 
+    public function isValidTransaction($transaction): bool
+    {
+        return isset($transaction['from'], $transaction['to'], $transaction['amount'], $transaction['signature'])
+            && $transaction['amount'] > 0;
+    }
+
+
     public function verify(string $transaction, string $merkleRoot): bool
     {
         $block = $this->findBlock($merkleRoot);
+        echo $merkleRoot;
         $proofs = MerkleTree::getProofs($block->transactions, $transaction);
         return MerkleTree::verify($transaction, $merkleRoot, $proofs);
     }
@@ -62,5 +80,13 @@ class Blockchain
             }
         }
         return null;
+    }
+
+    public function replaceWith(array $blockchainData): void
+    {
+        $this->blocks = [];
+        foreach ($blockchainData as $block) {
+            $this->add(Block::from($block));
+        }
     }
 }
