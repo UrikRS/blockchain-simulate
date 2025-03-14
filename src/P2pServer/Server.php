@@ -11,8 +11,9 @@ use SplObjectStorage;
 
 class Server implements MessageComponentInterface
 {
+    private $connection;
     private $clients;
-    private $peers;
+    private $peers = [];
     private $blockchain;
 
     public function __construct(Blockchain $blockchain)
@@ -23,9 +24,15 @@ class Server implements MessageComponentInterface
 
     public function onOpen(ConnectionInterface $connection): void
     {
+        $this->connection = $connection;
         $this->clients->attach($connection);
         echo "New connection\n";
-        $connection->send(json_encode(['type' => 'BLOCKCHAIN', 'data' => $this->blockchain->blocks]));
+
+        $nodeId = uniqid('node_');
+        $connection->send(json_encode(['type' => 'NODE_ID', 'data' => $nodeId]));
+        $connection->send(json_encode(['type' => 'REQUEST_PEERS']));
+        $connection->send(json_encode(['type' => 'REQUEST_LATEST_BLOCK']));
+        $this->broadcast('NEW_PEER', $connection->remoteAddress);
     }
 
     public function onMessage(ConnectionInterface $from, $message): void
@@ -93,9 +100,10 @@ class Server implements MessageComponentInterface
                 }
                 break;
             case 'REQUEST_PEERS':
+                $peers = $this->getConnectedPeerAddresses();
                 $from->send(json_encode([
                     'type' => 'PEER_LIST',
-                    'data' => $this->peers
+                    'data' => $peers
                 ]));
                 break;
             case 'PEER_LIST':
@@ -130,7 +138,20 @@ class Server implements MessageComponentInterface
     private function broadcast(string $type, $data): void
     {
         foreach ($this->clients as $client) {
-            $client->send(json_encode(['type' => $type, 'data' => $data]));
+            if ($client !== $this->connection) {
+                $client->send(json_encode(['type' => $type, 'data' => $data]));
+            }
         }
+    }
+
+    private function getConnectedPeerAddresses(): array
+    {
+        $peers = [];
+        foreach ($this->clients as $client) {
+            $socket = $client->stream;
+            stream_socket_get_name($socket, true);
+            $peerList[] = stream_socket_get_name($socket, true);
+        }
+        return $peers;
     }
 }
